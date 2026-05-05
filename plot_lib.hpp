@@ -4,37 +4,46 @@
 #include <vector>
 #include <algorithm>
 
-struct Limits {
-    float min, max;
-};
+namespace plot {
+    struct Bounds {
+        float min_x, max_x;
+        float min_y, max_y;
+        bool enabled;
+    };
 
-struct Step {
-    float x_step, y_step;
-    bool enabled;
-};
+    struct Step {
+        float x_step, y_step;
+        int x_line_thickness, y_line_thickness;
+        bool enabled;
+    };
 
-struct Colour {
-    unsigned char r, g, b, a;
-};
+    struct Point {
+        float x;
+        float y;
+    };
+}
 
-struct ColourStyle {
-    Colour colour;
-    bool enabled;
-};
+namespace format {
+    struct Colour {
+        unsigned char r, g, b, a;
+    };
 
-struct plotTitle {
-    std::string title;
-    std::string font_name;
-    int fontsize;
-    float x_position;
-    float y_position;
-    bool state;
-};
+    struct ColourStyle {
+        Colour colour;
+        bool enabled;
+    };
+}
 
-struct Point {
-    float x;
-    float y;
-};
+namespace ui {
+    struct plotTitle {
+        std::string title;
+        std::string font_name;
+        int fontsize;
+        float x_position;
+        float y_position;
+        bool enabled;
+    };
+}
 
 class Plot {
 public:
@@ -59,7 +68,9 @@ public:
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
 
-        TTF_CloseFont(font);
+        TTF_CloseFont(title_font);
+        TTF_CloseFont(x_label_font);
+        TTF_CloseFont(y_label_font);
         TTF_Quit();
         SDL_Quit();
     }
@@ -67,7 +78,7 @@ public:
     Plot(const Plot&) = delete;
     Plot& operator=(const Plot&) = delete;
 
-    void addData(const std::vector<Point>& dataPoints) {
+    void addData(const std::vector<plot::Point>& dataPoints) {
         data = dataPoints;
     }
 
@@ -76,7 +87,7 @@ public:
 
         if (data.size() < 2) return;
 
-        auto [xmin_local, xmax_local, ymin_local, ymax_local] = computeLimits();
+        auto [xmin_local, xmax_local, ymin_local, ymax_local] = compute_limits();
 
         if (xmax_local == xmin_local || ymax_local == ymin_local) return;
 
@@ -84,6 +95,8 @@ public:
         draw_axes(xmin_local, xmax_local, ymin_local, ymax_local);
         draw_plot(xmin_local, xmax_local, ymin_local, ymax_local);
         draw_title();
+        draw_x_label();
+        draw_y_label();
 
         SDL_RenderPresent(renderer);
     }
@@ -97,14 +110,14 @@ public:
         SDL_RenderClear(renderer);
     }
 
-    std::tuple<float,float,float,float> computeLimits() {
+    std::tuple<float,float,float,float> compute_limits() {
         float xmin_local, xmax_local, ymin_local, ymax_local;
 
-        if (use_custom_limits) {
-            xmin_local = x_limits.min;
-            xmax_local = x_limits.max;
-            ymin_local = y_limits.min;
-            ymax_local = y_limits.max;
+        if (limits.enabled) {
+            xmin_local = limits.min_x;
+            xmax_local = limits.max_x;
+            ymin_local = limits.min_y;
+            ymax_local = limits.max_y;
         } else {
             xmin_local = data[0].x;
             xmax_local = data[0].x;
@@ -157,25 +170,38 @@ public:
 
             int x2 = mapX(data[i].x, xmin_local, xmax_local);
             int y2 = mapY(data[i].y, ymin_local, ymax_local);
-            SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+
+            for (int i = -plot_thickness/2; i <= plot_thickness/2; i++) {
+                SDL_RenderDrawLine(renderer, x1 + i, y1, x2 + i, y2); // horizontal offset
+                SDL_RenderDrawLine(renderer, x1, y1 + i, x2, y2 + i); // vertical offset
+            }
         }
     }
 
     void draw_title() {
-        if (add_title)
-            generate_title(plot_title, title_location.x, title_location.y);
+        if (plot_title_config.enabled)
+            generate_text(title_font, plot_title_config.title, plot_title_config.x_position, plot_title_config.y_position);
     }
 
-    void loadFont() {
-        if (font) TTF_CloseFont(font);
+    void draw_x_label() {
+        if (x_label_config.enabled)
+            generate_text(x_label_font, x_label_config.title, x_label_config.x_position, x_label_config.y_position);
+    }
 
-        std::string full_path = "C:/Windows/Fonts/" + plot_font + ".ttf";
-        font = TTF_OpenFont(full_path.c_str(), plot_fontsize);
-        // std::cout << full_path << std::endl;
+    void draw_y_label() {
+        if (y_label_config.enabled)
+            generate_text(y_label_font, y_label_config.title, y_label_config.x_position, y_label_config.y_position);
+    }
 
-        if (!font) {
+    TTF_Font* loadFont(const ui::plotTitle& cfg)
+    {
+        std::string path = "C:/Windows/Fonts/" + cfg.font_name + ".ttf";
+        TTF_Font* f = TTF_OpenFont(path.c_str(), cfg.fontsize);
+
+        if (!f)
             SDL_Log("Font load error: %s", TTF_GetError());
-        }
+
+        return f;
     }
 
     bool isOpen() {
@@ -197,18 +223,20 @@ public:
         for (float x = xmin; x <= xmax; x += x_step)
         {
             int sx = mapX(x, xmin, xmax);
-            SDL_RenderDrawLine(renderer, sx, 0, sx, height);
+            for (int i = -step_grid.y_line_thickness/2; i <= step_grid.y_line_thickness/2; i++)
+                SDL_RenderDrawLine(renderer, sx + i, 0, sx + i, height);
         }
 
         // horizontal lines
         for (float y = ymin; y <= ymax; y += y_step)
         {
             int sy = mapY(y, ymin, ymax);
-            SDL_RenderDrawLine(renderer, 0, sy, width, sy);
+            for (int i = -step_grid.x_line_thickness/2; i <= step_grid.x_line_thickness/2; i++)
+                SDL_RenderDrawLine(renderer, 0, sy + i, width, sy + i);
         }
     }
 
-    void generate_title(const std::string& text, int x, int y) {
+    void generate_text(TTF_Font* font, const std::string& text, int x, int y) {
         SDL_Color color = {0, 0, 0, 255};
 
         SDL_Surface* surface =
@@ -228,23 +256,24 @@ public:
         SDL_DestroyTexture(texture);
     }
 
-    void setLimits(const Limits& x_lim, const Limits& y_lim) {
-        x_limits.min = x_lim.min;
-        x_limits.max = x_lim.max;
-        y_limits.min = y_lim.min;
-        y_limits.max = y_lim.max;
-        use_custom_limits = true;
+    void set_limits(const plot::Bounds& plot_limits) {
+        limits.min_x = plot_limits.min_x;
+        limits.max_x = plot_limits.max_x;
+        limits.min_y = plot_limits.min_y;
+        limits.max_y = plot_limits.max_y;
+        limits.enabled = plot_limits.enabled;
     }
 
-    void setPlotColour(const ColourStyle& c) {
+    void set_plot_colour(const format::ColourStyle& c, int line_thickness) {
         line_colour.colour.r = c.colour.r;
         line_colour.colour.g = c.colour.g;
         line_colour.colour.b = c.colour.b;
         line_colour.colour.a = c.colour.a;
         line_colour.enabled = c.enabled;
+        plot_thickness = line_thickness;
     }
 
-    void setBackgroundColour(const ColourStyle& c) {
+    void set_background_colour(const format::ColourStyle& c) {
         background_colour.colour.r = c.colour.r;
         background_colour.colour.g = c.colour.g;
         background_colour.colour.b = c.colour.b;
@@ -252,49 +281,68 @@ public:
         background_colour.enabled = c.enabled;
     }
 
-    void setGridState(const ColourStyle& c, const Step& step_size) {
+    void set_grid_state(const format::ColourStyle& c, const plot::Step& step_size) {
         grid_colour.colour.r = c.colour.r;
-        grid_colour.colour.g = c.colour.b;
+        grid_colour.colour.g = c.colour.g;
         grid_colour.colour.b = c.colour.b;
         grid_colour.colour.a = c.colour.a;
         grid_colour.enabled = c.enabled;
         step_grid.x_step = step_size.x_step;
         step_grid.y_step = step_size.y_step;
+        step_grid.x_line_thickness = step_size.x_line_thickness;
+        step_grid.y_line_thickness = step_size.y_line_thickness;
         use_grid = step_size.enabled;
     }
 
-    void setTitle(const std::string& title, const std::string& font_name, int fontsize, float x_position, float y_position, bool state) {
-        plot_title = title;
-        plot_font = font_name;
-        plot_fontsize = fontsize;
-        title_location.x = x_position;
-        title_location.y = y_position;
-        add_title = state;
-        loadFont();
+    void set_title(const ui::plotTitle& title_config) {
+        plot_title_config = title_config;
+        update_font(plot_title_config, title_font);
+    }
+
+    void set_x_label(const ui::plotTitle& label_config) {
+        x_label_config = label_config;
+        update_font(x_label_config, x_label_font);
+    }
+
+    void set_y_label(const ui::plotTitle& label_config) {
+        y_label_config = label_config;
+        update_font(y_label_config, y_label_font);
+    }
+
+    void update_font(ui::plotTitle& config, TTF_Font*& font) {
+        TTF_Font* new_font = loadFont(config);
+
+        if (new_font) {
+            if (font) TTF_CloseFont(font);
+            font = new_font;
+        }
     }
 
 private:
-    int width, height;
-    ColourStyle line_colour;
-    ColourStyle background_colour;
-    ColourStyle grid_colour;
-    Limits x_limits;
-    Limits y_limits;
-    Step step_grid;
-    Point title_location;
-    bool use_custom_limits = false;
     bool use_grid = false;
-    bool add_title = false;
+    int plot_thickness = 1;
+    int width, height;
 
-    TTF_Font* font = nullptr;
+    format::ColourStyle line_colour;
+    format::ColourStyle background_colour;
+    format::ColourStyle grid_colour;
+
+    plot::Bounds limits;
+
+    plot::Step step_grid;
+
+    ui::plotTitle plot_title_config;
+    ui::plotTitle x_label_config;
+    ui::plotTitle y_label_config;
+
+    TTF_Font* title_font = nullptr;
+    TTF_Font* x_label_font = nullptr;
+    TTF_Font* y_label_font = nullptr;
+
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
 
-    std::vector<Point> data;
-
-    std::string plot_title;
-    std::string plot_font;
-    int plot_fontsize = 24;
+    std::vector<plot::Point> data;
 
     int mapX(float x, float xmin, float xmax) {
         return static_cast<int>((x - xmin) / (xmax - xmin) * width);
