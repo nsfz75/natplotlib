@@ -4,6 +4,33 @@
 #include <vector>
 #include <algorithm>
 
+struct Limits {
+    float min, max;
+};
+
+struct Step {
+    float x_step, y_step;
+    bool enabled;
+};
+
+struct Colour {
+    unsigned char r, g, b, a;
+};
+
+struct ColourStyle {
+    Colour colour;
+    bool enabled;
+};
+
+struct plotTitle {
+    std::string title;
+    std::string font_name;
+    int fontsize;
+    float x_position;
+    float y_position;
+    bool state;
+};
+
 struct Point {
     float x;
     float y;
@@ -45,22 +72,39 @@ public:
     }
 
     void render() {
-        if (use_custom_background)
-            SDL_SetRenderDrawColor(renderer, rvalue_background, gvalue_background, bvalue_background, avalue_background);
+        clearScreen();
+
+        if (data.size() < 2) return;
+
+        auto [xmin_local, xmax_local, ymin_local, ymax_local] = computeLimits();
+
+        if (xmax_local == xmin_local || ymax_local == ymin_local) return;
+
+        draw_grid(xmin_local, xmax_local, ymin_local, ymax_local);
+        draw_axes(xmin_local, xmax_local, ymin_local, ymax_local);
+        draw_plot(xmin_local, xmax_local, ymin_local, ymax_local);
+        draw_title();
+
+        SDL_RenderPresent(renderer);
+    }
+
+    void clearScreen() {
+        if (background_colour.enabled)
+            SDL_SetRenderDrawColor(renderer, background_colour.colour.r, background_colour.colour.g, background_colour.colour.b, background_colour.colour.a);
         else
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
 
         SDL_RenderClear(renderer);
+    }
 
-        if (data.size() < 2) return;
-
+    std::tuple<float,float,float,float> computeLimits() {
         float xmin_local, xmax_local, ymin_local, ymax_local;
 
         if (use_custom_limits) {
-            xmin_local = xmin;
-            xmax_local = xmax;
-            ymin_local = ymin;
-            ymax_local = ymax;
+            xmin_local = x_limits.min;
+            xmax_local = x_limits.max;
+            ymin_local = y_limits.min;
+            ymax_local = y_limits.max;
         } else {
             xmin_local = data[0].x;
             xmax_local = data[0].x;
@@ -75,13 +119,19 @@ public:
             }
         }
 
-        if (xmax_local == xmin_local || ymax_local == ymin_local) return;
+        return {xmin_local, xmax_local, ymin_local, ymax_local};
+    }
 
-        if (use_grid)
-            drawGrid(xmin_local, xmax_local, ymin_local, ymax_local, x_step_grid, y_step_grid, 220, 220, 220, 255);
-        if (use_grid && use_custom_grid_colour)
-            drawGrid(xmin_local, xmax_local, ymin_local, ymax_local, x_step_grid, y_step_grid, rvalue_grid, gvalue_grid, bvalue_grid, avalue_grid);
+    void draw_grid(float xmin_local, float xmax_local, float ymin_local, float ymax_local) {
+        if (!use_grid) return;
 
+        if (grid_colour.enabled)
+            generate_grid(xmin_local, xmax_local, ymin_local, ymax_local, step_grid.x_step, step_grid.y_step, grid_colour.colour.r, grid_colour.colour.g, grid_colour.colour.b, grid_colour.colour.a);
+        else
+            generate_grid(xmin_local, xmax_local, ymin_local, ymax_local, step_grid.x_step, step_grid.y_step, 220, 220, 220, 255);
+    }
+
+    void draw_axes(float xmin_local, float xmax_local, float ymin_local, float ymax_local) {
         SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
 
         if (0 >= xmin_local && 0 <= xmax_local) {
@@ -93,9 +143,11 @@ public:
             int sy = mapY(0, ymin_local, ymax_local);
             SDL_RenderDrawLine(renderer, 0, sy, width, sy);
         }
+    }
 
-        if (use_custom_colours)
-            SDL_SetRenderDrawColor(renderer, rvalue_line, gvalue_line, bvalue_line, avalue_line);
+    void draw_plot(float xmin_local, float xmax_local, float ymin_local, float ymax_local) {
+        if (line_colour.enabled)
+            SDL_SetRenderDrawColor(renderer, line_colour.colour.r, line_colour.colour.g, line_colour.colour.b, line_colour.colour.a);
         else 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
@@ -107,10 +159,11 @@ public:
             int y2 = mapY(data[i].y, ymin_local, ymax_local);
             SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
         }
-        
-        drawText(plot_title, width / 2 - 50, 10);
+    }
 
-        SDL_RenderPresent(renderer);
+    void draw_title() {
+        if (add_title)
+            generate_title(plot_title, title_location.x, title_location.y);
     }
 
     void loadFont() {
@@ -134,7 +187,7 @@ public:
 
     }
 
-    void drawGrid(float xmin, float xmax, float ymin, float ymax, float x_step_grid, float y_step_grid, int rvalue, int gvalue, int bvalue, int avalue) {
+    void generate_grid(float xmin, float xmax, float ymin, float ymax, float x_step_grid, float y_step_grid, int rvalue, int gvalue, int bvalue, int avalue) {
         SDL_SetRenderDrawColor(renderer, rvalue, gvalue, bvalue, avalue);
 
         float x_step = (xmax - xmin) / x_step_grid;
@@ -155,7 +208,7 @@ public:
         }
     }
 
-    void drawText(const std::string& text, int x, int y) {
+    void generate_title(const std::string& text, int x, int y) {
         SDL_Color color = {0, 0, 0, 255};
 
         SDL_Surface* surface =
@@ -175,63 +228,68 @@ public:
         SDL_DestroyTexture(texture);
     }
 
-    void setLimits(float x_min, float x_max, float y_min, float y_max) {
-        xmin = x_min;
-        xmax = x_max;
-        ymin = y_min;
-        ymax = y_max;
+    void setLimits(const Limits& x_lim, const Limits& y_lim) {
+        x_limits.min = x_lim.min;
+        x_limits.max = x_lim.max;
+        y_limits.min = y_lim.min;
+        y_limits.max = y_lim.max;
         use_custom_limits = true;
     }
 
-    void setPlotColour(int r_value, int g_value, int b_value, int a_value, bool state) {
-        rvalue_line = r_value;
-        gvalue_line = g_value;
-        bvalue_line = b_value;
-        avalue_line = a_value;
-        use_custom_colours = state;
+    void setPlotColour(const ColourStyle& c) {
+        line_colour.colour.r = c.colour.r;
+        line_colour.colour.g = c.colour.g;
+        line_colour.colour.b = c.colour.b;
+        line_colour.colour.a = c.colour.a;
+        line_colour.enabled = c.enabled;
     }
 
-    void setBackgroundColour(int r_value, int g_value, int b_value, int a_value, bool state) {
-        rvalue_background = r_value;
-        gvalue_background = g_value;
-        bvalue_background = b_value;
-        avalue_background = a_value;
-        use_custom_background = state;
+    void setBackgroundColour(const ColourStyle& c) {
+        background_colour.colour.r = c.colour.r;
+        background_colour.colour.g = c.colour.g;
+        background_colour.colour.b = c.colour.b;
+        background_colour.colour.a = c.colour.a;
+        background_colour.enabled = c.enabled;
     }
 
-    void setGridState(int r_value, int g_value, int b_value, int a_value, bool state_colour, float x_step_size, float y_step_size, bool state) {
-        rvalue_grid = r_value;
-        gvalue_grid = g_value;
-        bvalue_grid = b_value;
-        avalue_grid = a_value;
-        use_custom_grid_colour = state_colour;
-        x_step_grid = x_step_size;
-        y_step_grid = y_step_size;
-        use_grid = state;
+    void setGridState(const ColourStyle& c, const Step& step_size) {
+        grid_colour.colour.r = c.colour.r;
+        grid_colour.colour.g = c.colour.b;
+        grid_colour.colour.b = c.colour.b;
+        grid_colour.colour.a = c.colour.a;
+        grid_colour.enabled = c.enabled;
+        step_grid.x_step = step_size.x_step;
+        step_grid.y_step = step_size.y_step;
+        use_grid = step_size.enabled;
     }
 
-    void setTitle(const std::string& title, const std::string& font_name, int fontsize) {
+    void setTitle(const std::string& title, const std::string& font_name, int fontsize, float x_position, float y_position, bool state) {
         plot_title = title;
         plot_font = font_name;
         plot_fontsize = fontsize;
+        title_location.x = x_position;
+        title_location.y = y_position;
+        add_title = state;
         loadFont();
     }
 
 private:
     int width, height;
-    int rvalue_line, gvalue_line, bvalue_line, avalue_line;
-    int rvalue_background, gvalue_background, bvalue_background, avalue_background;
-    int rvalue_grid, gvalue_grid, bvalue_grid, avalue_grid;
-    float xmin, xmax, ymin, ymax;
-    float x_step_grid, y_step_grid;
+    ColourStyle line_colour;
+    ColourStyle background_colour;
+    ColourStyle grid_colour;
+    Limits x_limits;
+    Limits y_limits;
+    Step step_grid;
+    Point title_location;
     bool use_custom_limits = false;
-    bool use_custom_colours = false;
-    bool use_custom_background = false;
     bool use_grid = false;
-    bool use_custom_grid_colour = false;
+    bool add_title = false;
+
     TTF_Font* font = nullptr;
     SDL_Window* window = nullptr;
     SDL_Renderer* renderer = nullptr;
+
     std::vector<Point> data;
 
     std::string plot_title;
