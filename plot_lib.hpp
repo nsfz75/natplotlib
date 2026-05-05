@@ -5,18 +5,21 @@
 #include <algorithm>
 
 namespace plot {
+    // Plot bounds
     struct Bounds {
         float min_x, max_x;
         float min_y, max_y;
         bool enabled;
     };
 
+    // Grid config
     struct Step {
         float x_step, y_step;
         int x_line_thickness, y_line_thickness;
         bool enabled;
     };
 
+    // Single point
     struct Point {
         float x;
         float y;
@@ -24,10 +27,12 @@ namespace plot {
 }
 
 namespace format {
+    // Colour values
     struct Colour {
         unsigned char r, g, b, a;
     };
 
+    // Master colour config
     struct ColourStyle {
         Colour colour;
         bool enabled;
@@ -35,6 +40,7 @@ namespace format {
 }
 
 namespace ui {
+    // Text config
     struct plotTitle {
         std::string title;
         std::string font_name;
@@ -48,14 +54,17 @@ namespace ui {
 class Plot {
 public:
     Plot(int w, int h) : width(w), height(h) {
+        // Initialise SDL video subsystem
         if (SDL_Init(SDL_INIT_VIDEO) != 0) {
             SDL_Log("SDL_Init Error: %s", SDL_GetError());
         }
 
+        // Initialise font subsystem
         if (TTF_Init() == -1) {
             SDL_Log("TTF_Init Error: %s", TTF_GetError());
         }
 
+        // Create rendering window
         window = SDL_CreateWindow("C++ Plot",
                                   SDL_WINDOWPOS_CENTERED,
                                   SDL_WINDOWPOS_CENTERED,
@@ -65,9 +74,11 @@ public:
     }
 
     ~Plot() {
+        // Clean up SDL resources
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
 
+        // Release loaded fonts
         TTF_CloseFont(title_font);
         TTF_CloseFont(x_label_font);
         TTF_CloseFont(y_label_font);
@@ -87,13 +98,18 @@ public:
 
         if (data.size() < 2) return;
 
+        // Determine plotting bounds
         auto [xmin_local, xmax_local, ymin_local, ymax_local] = compute_limits();
 
+        // Avoid division by zero in mapping
         if (xmax_local == xmin_local || ymax_local == ymin_local) return;
 
+         // Draw components
         draw_grid(xmin_local, xmax_local, ymin_local, ymax_local);
         draw_axes(xmin_local, xmax_local, ymin_local, ymax_local);
         draw_plot(xmin_local, xmax_local, ymin_local, ymax_local);
+
+        // UI overlays
         draw_title();
         draw_x_label();
         draw_y_label();
@@ -145,7 +161,7 @@ public:
     }
 
     void draw_axes(float xmin_local, float xmax_local, float ymin_local, float ymax_local) {
-        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 
         if (0 >= xmin_local && 0 <= xmax_local) {
             int sx = mapX(0, xmin_local, xmax_local);

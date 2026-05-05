@@ -12,23 +12,23 @@ Designed for rendering mathematical functions with configurable visuals and real
 * Adjustable plot colour and background
 * Grid system with configurable spacing
 * Automatic or manual scaling
-* Axis rendering (x = 0, y = 0)
+* Axis rendering
 * Title rendering using TrueType fonts
-* Real-time rendering loop
 
 ---
 
 ## Example
 
 ```cpp
-plot_function(
-    [](float x) { return sin(x); }, // function
-    {0, 10},                        // x-lims
-    {-1, 1},                        // y-lims
-    {255, 0, 0, 255, true},         // plot colour
-    {255, 255, 255, 255, false},    // background colour
-    {50, 50, true},                 // grid
-    {200, 200, 200, 255, true}      // grid colour
+plot_function([](float x) {return (sin(x)/x);},             // function
+    {-20, 20, -0.5, 1.5, true},                             // {x min, x max, y min, y max, custom limits enabled}
+    {{255, 0, 0, 255}, true}, {2},                          // {{plot red colour value, plot green colour value, plot blue colour value, plot alpha value}, plot custom colour enabled} , {line thickness}
+    {{255, 0, 0, 255}, false},                              // {{background red colour value, background green colour value, background blue colour value, background alpha value}, custom colour enabled}
+    {20, 20, 2, 5, true},                                   // {grid x step size, grid y step size, x-line thickness, y-line thickness, grid enabled}
+    {{12, 0, 0, 255}, false},                               // {{grid red colour value, grid green colour value, grid blue colour value, grid alpha balue}, custom colour enabled}
+    {"My test title", "arial", 36, 50, 0, true},            // {plot title, font name, font size, x position, y position, title enabled}
+    {"My x axis label", "Calibri", 12, 100, 100, true},     // {x label, font name, font size, x position, y position, x label enabled}
+    {"My y axis label", "Gadugi", 12, 0, 0, true}           // {y label, font name, font size, x position, y position, y label enabled}
 );
 ```
 
@@ -51,25 +51,8 @@ g++ plot_lib.cpp -o plot_lib.exe -lSDL2 -lSDL2_ttf -mconsole && .\plot_lib.exe
 
 ---
 
-## Fonts
-
-Fonts are loaded from:
-
-```
-C:/Windows/Fonts/
-```
-
-Example:
-
-```cpp
-plot.setTitle("My Graph", "arial", 24);
-```
-
----
-
 ## Future Work
 
-* Axis labels
 * Improved text alignment
 * Multiple plot support
 * Line thickness control
